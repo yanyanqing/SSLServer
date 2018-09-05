@@ -63,7 +63,6 @@ int StartUp(const char *ip, int port){
 
 int main(int argc, char *argv[]){
   // int socket = StartUp(argv[1], atoi(argv[2]));
-    HttpsConn::init_cert();
     pid_t pid = fork();
     if(pid < 0){
         perror("fork error");
@@ -112,6 +111,7 @@ int main(int argc, char *argv[]){
         close(epollfd);
         close(listenfd);
     }else{
+        HttpsConn::init_cert();
         ThreadPool<HttpsConn>* pool = new ThreadPool<HttpsConn>(8, 1024);    
         //HttpConn *conn = new HttpConn[1024];
         int listenfd = StartUp("127.0.0.1",4433);
@@ -144,7 +144,6 @@ int main(int argc, char *argv[]){
                         perror("accept error");
                         continue;
                     }
-                    
                     SSL_set_fd(HttpsConn::ssl, sock);
                     if (SSL_accept(HttpsConn::ssl) <= 0) {
                         perror("SSL_accept error");

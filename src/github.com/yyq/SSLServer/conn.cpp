@@ -10,19 +10,23 @@ int get_line(int m_sock, char* buf, int size, SSL* ssl, bool ishttps){
     char c;
     int i = 0;
     int n = 0;
-    printf("getline buf=%s", buf);
     do{
         if(!ishttps){
             n = recv(m_sock, &c, 1, 0);
         }else{
             n = SSL_read(ssl, &c, 1); 
             // if(n < 0){
-            //     perror("SSL_read error");
-            //     printf("error=%d", SSL_get_error(ssl, n));
-            //     sleep(1); 
+            //    printf("n=%d, c=%c\n", n, c);
+            //     sleep(1);
             // }
+
+            if(n < 0){
+                perror("SSL_read error");
+                printf("error=%d\n", SSL_get_error(ssl, n));
+                sleep(1); 
+            }
         }
-        //printf("n=%d, c=%c\n", n, c);
+
         if(n < 0)continue;
         if(n == 0){
             //close_conn();
@@ -49,7 +53,6 @@ int get_line(int m_sock, char* buf, int size, SSL* ssl, bool ishttps){
     }while(i < size - 1 && c != '\n');
 
     buf[i] = '\0';
-    printf("getline buf=%s", buf);
     return i;
 }
 
@@ -63,12 +66,33 @@ void clearHead(int m_sock, SSL* ssl, bool ishttps){
     }while(n > 0 && strcmp(buf, "\n") != 0);
 }
 
-void serve_static(int sock, SSL* ssl, char* path, int size, bool ishttps){
+void serve_static(int sock, SSL* ssl, char* method, char* path, int size, bool ishttps){
     printf("showPage path=%s\n", path);
-    int fd = open(path, O_RDONLY);
     char buff[SIZE] = {0};
-
     sprintf(buff, "%s", "HTTP/1.0 200 OK\r\n\r\n");
+    if(strcasecmp(method, "delete") == 0){
+        char command[255];
+        char cwd[255]={0};
+        getcwd(cwd, 255);
+        strcat(cwd, "/");
+        strcat(cwd, path);
+        sprintf(command, "rm -rf %s", cwd);
+        printf("c=%s\n", command);
+        pid_t pid = fork();
+        if(pid == 0){
+            //execl(command, command, NULL);
+            system(command);
+            if(ishttps){
+                SSL_write(ssl, buff, strlen(buff));
+            }else{
+                send(sock, buff, strlen(buff),0);
+            }
+            close(sock);
+        }        
+        return ;
+    }
+
+    int fd = open(path, O_RDONLY);
     if(ishttps){
         SSL_write(ssl, buff, strlen(buff));
         void* srcp = mmap(0, size, PROT_READ, MAP_PRIVATE, fd, 0);
@@ -358,18 +382,18 @@ void parse_request_line(int sock, char* buf, int size, SSL* ssl, bool ishttps){
         return;
     }
 
+
     if(st.st_mode & S_IFMT == S_IFDIR)  strcat(path, "/index.html");
     if ((st.st_mode & S_IXUSR) || (st.st_mode & S_IXGRP) ||(st.st_mode & S_IXOTH)){
         cgi = true;
     }
-    
+
     if(cgi){
         excute_cgi(sock, ssl, method, path, query_string, ishttps);
     }else{
         clearHead(sock, ssl, ishttps);
-        serve_static(sock, ssl, path, st.st_size, ishttps);
+        serve_static(sock, ssl, method, path, st.st_size, ishttps);
     }
-
     close(sock);   
 }
 
